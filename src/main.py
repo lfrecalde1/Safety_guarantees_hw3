@@ -118,7 +118,8 @@ def main():
     f_0 = 0.1
     f_1 = 0.05
     f_2 = 0.005
-    alpha = 3
+    alpha = 1.0
+    gamma = 0.1
 
     L = [mass, f_0, f_1, f_2]
 
@@ -131,30 +132,34 @@ def main():
     u = np.zeros((1, t.shape[0]), dtype=np.double)
 
     # Desired Velocity
-    xd = 2 * np.ones((1, t.shape[0] + 1), dtype=np.double)
+    xd = 3 * np.ones((1, t.shape[0] + 1), dtype=np.double)
 
     # Set up casadi
-    u_op = ca.MX.sym("u_op", 1)
+    # Control input
+    u_op = ca.MX.sym("u_op", 2)
+
+    # External parameters of the sytem
     p = ca.MX.sym("p", 2)
 
     # Cost Function
     Q = ca.DM.eye(1)
-    f = (1 / 2) * u_op * Q * u_op
+    f = (1 / 2) * u_op[0] * Q * u_op[0] + gamma * (u_op[1] * u_op[1])
 
-    # Split external parameters
+    # Split external parameters in desired velocity and velocity of the system
     vd_opt = p[0]
     v_op = p[1]
 
-    # Restrictions
+    # Restrictions linear in the control actions
     g_expr = (
         (v_op - vd_opt) * (-(1 / mass) * (f_0 + f_1 * v_op + f_2 * (v_op) ** 2))
-        + (v_op - vd_opt) * (1 / mass) * u_op
+        + (v_op - vd_opt) * (1 / mass) * u_op[0]
         + alpha * (1 / 2) * (v_op - vd_opt) ** 2
+        + (u_op[1] * u_op[1])
     )
 
     # Boundaries of the optimization variables
-    lbx = [-4.0]
-    ubx = [4.0]
+    lbx = [-2.0]
+    ubx = [2.0]
 
     qp = {"x": u_op, "p": p, "f": f, "g": g_expr}
     solver = ca.qpsol("solver", "qpoases", qp)
@@ -164,7 +169,8 @@ def main():
         ## Compute control actions using casadi
         sol = solver(lbx=lbx, ubx=ubx, lbg=-ca.inf, ubg=0, p=[xd[:, k], x[:, k]])
         u_optimal = sol["x"].full()
-        u[:, k] = u_optimal
+        print(u_optimal)
+        u[:, k] = u_optimal[0,]
 
         # Evolution of the system
         x[:, k + 1] = f_rk4(x[:, k], u[:, k], ts, L)
